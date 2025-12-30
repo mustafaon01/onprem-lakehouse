@@ -1,0 +1,146 @@
+version: "3.9"
+
+services:
+  # Apache Polaris (Catalog)
+  polaris:
+    image: apache/polaris:latest
+    container_name: polaris
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: dummy-region
+      AWS_ENDPOINT_URL_S3: http://minio:9000
+      AWS_ENDPOINT_URL_STS: http://minio:9000
+      POLARIS_BOOTSTRAP_CREDENTIALS: default,root,secret
+      polaris.features.DROP_WITH_PURGE_ENABLED: "true"
+      polaris.realm-context.realms: default
+    ports:
+      - "8181:8181"
+      - "8282:8282"
+    networks:
+      - local-iceberg-lakehouse
+
+  # MinIO (Storage)
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: dummy-region
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password
+      MINIO_DOMAIN: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: [ "server", "/data", "--console-address", ":9001" ]
+    networks:
+      local-iceberg-lakehouse:
+        aliases:
+          - warehouse.minio
+
+  # MinIO Client (to create buckets)
+  mc:
+    image: minio/mc:latest
+    container_name: mc
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (mc alias set minio http://minio:9000 admin password) do echo '...waiting...' && sleep 1; done;
+      mc rm -r --force minio/warehouse;
+      mc mb minio/warehouse;
+      mc anonymous set public minio/warehouse;
+      tail -f /dev/null
+      "
+    networks:
+      - local-iceberg-lakehouse
+
+  # Spark for processing
+
+  #spark:
+  #  image: tabulario/spark-iceberg
+  #  container_name: spark
+  #  depends_on:
+  #    - polaris
+  #    - minio
+  #  environment:
+  #    AWS_ACCESS_KEY_ID: admin
+  #    AWS_SECRET_ACCESS_KEY: password
+  #    AWS_REGION: us-east-1
+  #  ports:
+  #    - "8888:8888"
+  #    - "7077:7077"
+  #    - "8888:8888"
+  #  volumes:
+  #    - ./scripts:/home/iceberg/scripts
+  #  networks:
+  #    - local-iceberg-lakehouse
+
+  # Trino
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino
+    depends_on:
+      - polaris
+      - minio
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/catalog:/etc/trino/catalog
+    environment:
+      AWS_ACCESS_KEY_ID: admin
+      AWS_SECRET_ACCESS_KEY: password
+      AWS_REGION: us-east-1
+    networks:
+      - local-iceberg-lakehouse
+
+  polaris-bootstrap:
+    image: python:3.12-slim
+    container_name: polaris-bootstrap
+    depends_on:
+      - polaris
+      - minio
+      - mc
+    working_dir: /app
+    volumes:
+      - ./scripts:/app
+    environment:
+      POLARIS_URL: http://polaris:8181
+      POLARIS_CLIENT_ID: root
+      POLARIS_CLIENT_SECRET: secret
+      POLARIS_SCOPE: PRINCIPAL_ROLE:ALL
+
+      POLARIS_CATALOG: polariscatalog
+
+      POLARIS_DEFAULT_BASE_LOCATION: s3://warehouse
+      POLARIS_S3_ENDPOINT: http://minio:9000
+      POLARIS_S3_REGION: dummy-region
+      POLARIS_S3_ACCESS_KEY: admin
+      POLARIS_S3_SECRET_KEY: password
+
+      POLARIS_ROLE_ARN: arn:aws:iam::000000000000:role/minio-polaris-role
+      POLARIS_ALLOWED_LOCATIONS: s3://warehouse/*
+
+      POLARIS_CATALOG_ROLE: catalog_admin
+      POLARIS_PRINCIPAL_ROLE: data_engineer
+      POLARIS_PRINCIPAL: root
+
+      WAIT_SECONDS: "120"
+      HTTP_TIMEOUT: "15"
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             python bootstrap.py"
+    networks:
+      - local-iceberg-lakehouse
+    restart: "no"
+
+networks:
+  local-iceberg-lakehouse:
+    name: local-iceberg-lakehouse
+    driver: bridge
