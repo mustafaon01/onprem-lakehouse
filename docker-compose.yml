@@ -150,6 +150,8 @@ services:
       - trino
     networks:
       - local-iceberg-lakehouse
+    ports:
+      - "8081:8081"
     entrypoint: ["bash", "-lc", "pip install -U pip dbt-trino && tail -f /dev/null"]
 
 
