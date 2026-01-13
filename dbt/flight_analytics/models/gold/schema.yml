@@ -1,0 +1,29 @@
+version: 2
+models:
+  - name: stg_airplane
+    description: Cleaned and standardized airplane data
+    columns:
+      - name: airplane_id
+        tests:
+          - not_null
+          - unique
+  - name: stg_flight
+    description: Cleaned flight data
+    columns:
+      - name: flight_id
+        tests:
+          - not_null
+          - unique
+      - name: airplane_id
+        tests:
+          - not_null
+  - name: stg_reservation
+    description: Cleaned reservation data
+    columns:
+      - name: reservation_id
+        tests:
+          - not_null
+          - unique
+      - name: flight_id
+        tests:
+          - not_null

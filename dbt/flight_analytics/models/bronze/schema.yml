@@ -1,0 +1,9 @@
+version: 2
+sources:
+  - name: airline
+    schema: airline
+    database: iceberg
+    tables:
+      - name: airplane
+      - name: flight
+      - name: reservation

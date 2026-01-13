@@ -1,0 +1,11 @@
+version: 2
+models:
+  - name: fct_flight_reservations
+    description: Aggregated reservation metrics per flight
+    columns:
+      - name: flight_id
+        tests:
+          - not_null
+      - name: reservation_count
+        tests:
+          - not_null
