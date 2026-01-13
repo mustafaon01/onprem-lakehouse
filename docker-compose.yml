@@ -139,6 +139,19 @@ services:
     networks:
       - local-iceberg-lakehouse
     restart: "no"
+  dbt:
+    image: python:3.12-slim
+    container_name: dbt
+    working_dir: /workspace
+    volumes:
+      - ./dbt:/workspace
+      - ./dbt_profiles:/root/.dbt
+    depends_on:
+      - trino
+    networks:
+      - local-iceberg-lakehouse
+    entrypoint: ["bash", "-lc", "pip install -U pip dbt-trino && tail -f /dev/null"]
+
 
 networks:
   local-iceberg-lakehouse:
